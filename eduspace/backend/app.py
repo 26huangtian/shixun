@@ -4,12 +4,12 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 import sys
+import traceback
 from pathlib import Path
 from datetime import datetime, timedelta
 from sqlalchemy.dialects.postgresql import UUID
 
 # --- 1. 环境与路径配置 ---
-# 处理 Vercel 部署时的路径问题，确保能找到同级或上级目录的 middleware
 sys.path.append(str(Path(__file__).parent.parent))
 load_dotenv()
 
@@ -18,15 +18,13 @@ app = Flask(__name__)
 # 允许所有来源跨域，确保前端 Vercel 域名能访问
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# --- 3. 数据库连接配置 (按照你提供的格式) ---
-# 使用你提供的 Supabase 连接字符串，并强制指定 pg8000 驱动以确保兼容性
-app.config[
-    'SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres.rrwkycogajqdqawbyxos:Huangtianxiang@aws-1-us-east-2.pooler.supabase.com:5432/postgres'
+# --- 3. 数据库连接配置 ---
+# 请确保你的数据库密码 Huangtianxiang 是正确的
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres.rrwkycogajqdqawbyxos:Huangtianxiang@aws-1-us-east-2.pooler.supabase.com:5432/postgres'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # --- 4. 初始化数据库对象 ---
 db = SQLAlchemy(app)
-
 
 # --- 5. 定义图书管理系统模型 ---
 
@@ -36,7 +34,6 @@ class Profile(db.Model):
     name = db.Column(db.String(100))
     role = db.Column(db.String(20), default='reader')  # reader, admin
 
-
 class Book(db.Model):
     __tablename__ = 'books'
     id = db.Column(db.Integer, primary_key=True)
@@ -44,7 +41,8 @@ class Book(db.Model):
     author = db.Column(db.String(100))
     stock = db.Column(db.Integer, default=5)
     category = db.Column(db.String(50))
-
+    description = db.Column(db.Text)
+    location = db.Column(db.String(100))
 
 class BorrowRecord(db.Model):
     __tablename__ = 'borrow_records'
@@ -57,33 +55,29 @@ class BorrowRecord(db.Model):
     status = db.Column(db.String(20), default='borrowing')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-
-# --- 6. 导入中间件 (放在 db 定义之后防止循环引用) ---
+# --- 6. 导入中间件 (确保已创建 middleware/auth.py) ---
 from middleware.auth import token_required
-
 
 # --- 7. API 接口定义 ---
 
-# 健康检查
+# A. 健康检查
 @app.route('/api/health')
 @app.route('/health')
 def health_check():
-    return jsonify({"status": "ok", "message": "BookSpace API 在线"})
+    return jsonify({"status": "ok", "message": "BookSpace API 运行中"})
 
-
-# 图书系统首页统计接口
+# B. 图书系统首页统计接口
 @app.route('/api/dashboard/stats', methods=['GET'])
 @token_required
 def get_book_stats(current_user_id):
     try:
-        # 获取当前用户信息
         user = db.session.get(Profile, current_user_id)
         role = user.role if user else 'reader'
 
-        # 1. 个人借阅统计
+        # 统计个人借阅数量
         my_borrowing_count = BorrowRecord.query.filter_by(user_id=current_user_id, status='borrowing').count()
 
-        # 查找即将到期的书 (最近的一本)
+        # 查找即将到期的书
         due_soon = db.session.query(Book.title, BorrowRecord.due_date) \
             .join(BorrowRecord, Book.id == BorrowRecord.book_id) \
             .filter(BorrowRecord.user_id == current_user_id, BorrowRecord.status == 'borrowing') \
@@ -99,7 +93,7 @@ def get_book_stats(current_user_id):
             }
         }
 
-        # 2. 如果是管理员，返回全馆数据
+        # 如果是管理员，增加全馆统计
         if role == 'admin':
             res["admin_stats"] = {
                 "total_books": Book.query.count(),
@@ -110,94 +104,94 @@ def get_book_stats(current_user_id):
 
         return jsonify(res)
     except Exception as e:
+        print(f"统计接口出错: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-
-# 1. 获取所有图书列表（支持搜索）
+# C. 获取图书列表
 @app.route('/api/books', methods=['GET'])
 @token_required
 def get_books(current_user_id):
-    search = request.args.get('search', '')
-    query = Book.query
-    if search:
-        query = query.filter(Book.title.ilike(f'%{search}%'))
+    try:
+        search = request.args.get('search', '')
+        query = Book.query
+        if search:
+            query = query.filter(Book.title.ilike(f'%{search}%') | Book.author.ilike(f'%{search}%'))
 
-    books = query.all()
-    # 查出当前用户已借阅且未归还的书 ID 列表
-    my_borrows = [r.book_id for r in BorrowRecord.query.filter_by(user_id=current_user_id, status='borrowing').all()]
+        books = query.all()
+        my_borrows = [r.book_id for r in BorrowRecord.query.filter_by(user_id=current_user_id, status='borrowing').all()]
 
-    return jsonify({
-        "books": [{
-            "id": b.id, "title": b.title, "author": b.author,
-            "stock": b.stock, "category": b.category,
-            "is_borrowed": b.id in my_borrows
-        } for b in books]
-    })
+        return jsonify({
+            "books": [{
+                "id": b.id,
+                "title": b.title,
+                "author": b.author,
+                "stock": b.stock,
+                "category": b.category,
+                "description": b.description or "暂无简介",
+                "location": b.location or "通用架位",
+                "is_borrowed": b.id in my_borrows
+            } for b in books]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-
-# 2. 借书接口
+# D. 借书接口
 @app.route('/api/books/borrow', methods=['POST'])
 @token_required
 def borrow_book(current_user_id):
-    data = request.json
-    book_id = data.get('book_id')
-
-    book = db.session.get(Book, book_id)
-    if not book or book.stock <= 0:
-        return jsonify({"message": "书本库存不足"}), 400
-
-    # 检查是否重复借阅同一本
-    existing = BorrowRecord.query.filter_by(user_id=current_user_id, book_id=book_id, status='borrowing').first()
-    if existing:
-        return jsonify({"message": "您已借阅此书，请先归还后再借"}), 400
-
     try:
-        # 创建借书记录
+        data = request.json
+        book_id = data.get('book_id')
+
+        book = db.session.get(Book, book_id)
+        if not book or book.stock <= 0:
+            return jsonify({"message": "书本库存不足"}), 400
+
+        existing = BorrowRecord.query.filter_by(user_id=current_user_id, book_id=book_id, status='borrowing').first()
+        if existing:
+            return jsonify({"message": "您已借阅此书，请先归还后再借"}), 400
+
         new_record = BorrowRecord(
             user_id=current_user_id,
             book_id=book_id,
-            due_date=(datetime.now() + timedelta(days=30)).date(),  # 默认30天归还
+            due_date=(datetime.now() + timedelta(days=30)).date(),
             status='borrowing'
         )
-        book.stock -= 1  # 库存减一
+        book.stock -= 1
         db.session.add(new_record)
         db.session.commit()
-        return jsonify({"message": "借阅成功！应还日期：" + new_record.due_date.strftime('%Y-%m-%d')})
+        return jsonify({"message": f"借阅成功！应还日期：{new_record.due_date}"})
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"message": f"系统错误: {str(e)}"}), 500
 
-
-# 3. 归还图书接口
+# E. 归还图书接口
 @app.route('/api/books/return', methods=['POST'])
 @token_required
 def return_book(current_user_id):
-    data = request.json
-    record_id = data.get('record_id')
-
-    record = BorrowRecord.query.filter_by(id=record_id, user_id=current_user_id).first()
-    if not record:
-        return jsonify({"message": "记录不存在"}), 404
-
-    book = db.session.get(Book, record.book_id)
     try:
+        data = request.json
+        record_id = data.get('record_id')
+
+        record = BorrowRecord.query.filter_by(id=record_id, user_id=current_user_id).first()
+        if not record:
+            return jsonify({"message": "记录不存在"}), 404
+
+        book = db.session.get(Book, record.book_id)
         record.status = 'returned'
         record.return_date = datetime.now().date()
-        book.stock += 1  # 库存加一
+        book.stock += 1
         db.session.commit()
         return jsonify({"message": "归还成功"})
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-
-# --- 获取当前用户的真实借阅记录 ---
+# F. 获取个人借阅历史
 @app.route('/api/my-borrowing', methods=['GET'])
 @token_required
 def get_my_borrowing(current_user_id):
     try:
-        # 使用 SQLAlchemy 进行多表联查：BorrowRecord + Book
-        # 只查当前登录用户的记录，并按借阅时间倒序排列
         records = db.session.query(BorrowRecord, Book.title, Book.author) \
             .join(Book, BorrowRecord.book_id == Book.id) \
             .filter(BorrowRecord.user_id == current_user_id) \
@@ -211,16 +205,35 @@ def get_my_borrowing(current_user_id):
                 "author": author,
                 "borrow_date": rec.borrow_date.strftime('%Y-%m-%d') if rec.borrow_date else "未知",
                 "due_date": rec.due_date.strftime('%Y-%m-%d') if rec.due_date else "未知",
-                "status": rec.status,  # borrowing, returned
+                "status": rec.status,
                 "return_date": rec.return_date.strftime('%Y-%m-%d') if rec.return_date else None
             })
-
         return jsonify(result)
     except Exception as e:
-        print(f"获取借阅记录失败: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# G. 个人资料管理
+@app.route('/api/me', methods=['GET', 'POST'])
+@app.route('/me', methods=['GET', 'POST'])
+@token_required
+def manage_profile(current_user_id):
+    try:
+        profile = db.session.get(Profile, current_user_id)
+        if request.method == 'GET':
+            return jsonify({
+                "name": profile.name if profile else "",
+                "role": profile.role if profile else "reader"
+            })
+        if request.method == 'POST':
+            data = request.get_json()
+            if not profile:
+                profile = Profile(id=current_user_id, role='reader')
+                db.session.add(profile)
+            profile.name = data.get('name', '')
+            db.session.commit()
+            return jsonify({"message": "更新成功"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-# 启动本地服务测试
 if __name__ == '__main__':
     app.run(debug=True, port=5328)
