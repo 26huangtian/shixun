@@ -1,12 +1,14 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://127.0.0.1:5328/api/:path*',
+        destination: 'http://127.0.0.1:5328/api/:path*', // 确保端口和 Flask 一致
       },
-    ]
+    ];
   },
 };
+
 export default nextConfig;
