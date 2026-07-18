@@ -71,7 +71,7 @@ export default function LoginPage() {
 
           <div className="flex justify-between items-center px-1">
             <Link href="/register" className="text-xs font-black text-indigo-600 hover:text-indigo-800 underline underline-offset-4">注册新读者</Link>
-            <Link href="#" className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors">忘记密码？</Link>
+            <Link href="/forgot-password" className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors">忘记密码？</Link>
           </div>
         </form>
       </div>

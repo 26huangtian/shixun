@@ -14,3 +14,7 @@ frontend/.idea/
 .DS_Store
 .idea/
 .vscode/
+
+.idea/
+**/__pycache__/
+**/*.pyc
