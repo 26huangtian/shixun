@@ -1,23 +1,23 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from sqlalchemy.dialects.postgresql import UUID
 
 db = SQLAlchemy()
 
-# 1. 用户模型
 class Profile(db.Model):
     __tablename__ = 'profiles'
-    id = db.Column(db.String(36), primary_key=True) # 对应 Supabase Auth 的 UUID
+    id = db.Column(UUID(as_uuid=True), primary_key=True)
     name = db.Column(db.String(100))
-    user_class = db.Column(db.String(50), name='class') # class是关键字，映射一下
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    role = db.Column(db.String(20), default='reader')
 
-# 2. 课程模型
-class Course(db.Model):
-    __tablename__ = 'courses'
+class Book(db.Model):
+    __tablename__ = 'books'
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    teacher = db.Column(db.String(100))
-    credit = db.Column(db.Integer)
-    capacity = db.Column(db.Integer, default=30)
-    enrolled_count = db.Column(db.Integer, default=0)
-    schedule_json = db.Column(db.JSON) # 存储上课时间
+    title = db.Column(db.String(255), nullable=False)
+    stock = db.Column(db.Integer, default=5)
+
+class BorrowRecord(db.Model):
+    __tablename__ = 'borrow_records'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(UUID(as_uuid=True), db.ForeignKey('profiles.id'))
+    book_id = db.Column(db.Integer, db.ForeignKey('books.id'))
+    status = db.Column(db.String(20), default='borrowing')
