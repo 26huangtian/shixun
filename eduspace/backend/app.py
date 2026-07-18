@@ -7,6 +7,7 @@ import sys
 import traceback
 from pathlib import Path
 from datetime import datetime, timedelta
+from functools import wraps
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -40,10 +41,11 @@ class Book(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
     author = db.Column(db.String(100))
+    isbn = db.Column(db.String(50))      # 新增
     stock = db.Column(db.Integer, default=5)
     category = db.Column(db.String(50))
-    description = db.Column(db.Text)
-    location = db.Column(db.String(100))
+    description = db.Column(db.Text)     # 新增
+    location = db.Column(db.String(100))  # 新增
 
 
 class BorrowRecord(db.Model):
@@ -76,10 +78,7 @@ from middleware.auth import token_required
 def health_check():
     return jsonify({"status": "ok", "message": "BookSpace API 在线运行中"})
 
-
 # 首页统计接口
-# --- 学习总览统计接口 (V4.0 深度优化版) ---
-# 集成：逾期预警、罚金计算、挑战进度、管理全量数据
 @app.route('/api/dashboard/stats', methods=['GET'])
 @token_required
 def get_book_stats(current_user_id):
@@ -201,6 +200,7 @@ def get_book_stats(current_user_id):
         traceback.print_exc()
         return jsonify({"error": "数据中心同步失败", "details": str(e)}), 500
 
+
 @app.route('/api/my-borrowing', methods=['GET'])
 @app.route('/my-borrowing', methods=['GET'])
 @token_required
@@ -243,8 +243,13 @@ def get_books(current_user_id):
             query = query.filter(Book.category == category)
 
         books = query.all()
+
+        # 1. 查出当前用户正在借阅的书 ID 列表
         my_borrows = [r.book_id for r in
                       BorrowRecord.query.filter_by(user_id=current_user_id, status='borrowing').all()]
+
+        # 2. 核心新增：查出当前用户已收藏的书 ID 列表
+        my_wishlist = [w.book_id for w in Wishlist.query.filter_by(user_id=current_user_id).all()]
 
         return jsonify({
             "books": [{
@@ -252,7 +257,8 @@ def get_books(current_user_id):
                 "stock": b.stock, "category": b.category,
                 "description": b.description or "暂无简介",
                 "location": b.location or "通用架位",
-                "is_borrowed": b.id in my_borrows
+                "is_borrowed": b.id in my_borrows,
+                "is_wishlisted": b.id in my_wishlist  # 传给前端判定心形颜色
             } for b in books]
         })
     except Exception as e:
@@ -374,6 +380,79 @@ def toggle_wishlist(current_user_id):
 def get_my_wishlist(current_user_id):
     items = db.session.query(Book).join(Wishlist).filter(Wishlist.user_id == current_user_id).all()
     return jsonify([{"id": b.id, "title": b.title, "author": b.author, "category": b.category} for b in items])
+
+def admin_only(f):
+    @wraps(f)
+    def decorated_function(current_user_id, *args, **kwargs):
+        user = db.session.get(Profile, current_user_id)
+        if not user or user.role != 'admin':
+            return jsonify({"message": "权限不足，仅限管理员访问"}), 403
+        return f(current_user_id, *args, **kwargs)
+    return decorated_function
+
+
+# 1. 管理端：图书全量管理 (新增/修改)
+@app.route('/api/admin/books', methods=['POST', 'PUT'])
+@token_required
+@admin_only
+def admin_manage_books(current_user_id):
+    data = request.json
+    if request.method == 'POST':  # 新增入库
+        new_book = Book(
+            title=data['title'],
+            author=data['author'],
+            category=data['category'],
+            stock=data['stock'],
+            description=data.get('description', ''),
+            location=data.get('location', '未分类')
+        )
+        db.session.add(new_book)
+        db.session.commit()
+        return jsonify({"message": "图书入库成功"})
+
+    if request.method == 'PUT':  # 修改信息
+        book = db.session.get(Book, data['id'])
+        if book:
+            book.title = data.get('title', book.title)
+            book.stock = data.get('stock', book.stock)
+            book.location = data.get('location', book.location)
+            db.session.commit()
+            return jsonify({"message": "信息已同步"})
+        return jsonify({"message": "图书不存在"}), 404
+
+
+# 2. 管理端：删除图书
+@app.route('/api/admin/books/<int:id>', methods=['DELETE'])
+@token_required
+@admin_only
+def admin_delete_book(current_user_id, id):
+    book = db.session.get(Book, id)
+    if book:
+        db.session.delete(book)
+        db.session.commit()
+        return jsonify({"message": "图书已永久移除"})
+    return jsonify({"message": "未找到图书"}), 404
+
+
+# 3. 管理端：全馆借阅流水审计
+@app.route('/api/admin/records', methods=['GET'])
+@token_required
+@admin_only
+def admin_get_all_records(current_user_id):
+    # 联查：借阅记录 + 书名 + 借阅人姓名
+    records = db.session.query(BorrowRecord, Book.title, Profile.name) \
+        .join(Book, BorrowRecord.book_id == Book.id) \
+        .join(Profile, BorrowRecord.user_id == Profile.id) \
+        .order_by(BorrowRecord.created_at.desc()).all()
+
+    return jsonify([{
+        "id": r[0].id,
+        "title": r[1],
+        "user_name": r[2],
+        "borrow_date": r[0].borrow_date.strftime('%Y-%m-%d'),
+        "due_date": r[0].due_date.strftime('%Y-%m-%d'),
+        "status": r[0].status
+    } for r in records])
 
 
 if __name__ == '__main__':
