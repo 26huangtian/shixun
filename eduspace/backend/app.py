@@ -455,6 +455,58 @@ def admin_get_all_records(current_user_id):
     } for r in records])
 
 
+# 1. 管理端：修改图书详情 (支持全字段更新)
+@app.route('/api/admin/books/<int:book_id>', methods=['PUT'])
+@token_required
+@admin_only
+def admin_update_book(current_user_id, book_id):
+    try:
+        data = request.json
+        book = db.session.get(Book, book_id)
+        if not book:
+            return jsonify({"message": "图书不存在"}), 404
+
+        # 更新字段
+        book.title = data.get('title', book.title)
+        book.author = data.get('author', book.author)
+        book.category = data.get('category', book.category)
+        book.stock = data.get('stock', book.stock)
+        book.location = data.get('location', book.location)
+        book.description = data.get('description', book.description)
+        book.isbn = data.get('isbn', book.isbn)
+
+        db.session.commit()
+        return jsonify({"message": "图书资产信息已同步更新"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+# 2. 管理端：手动办理还书手续
+@app.route('/api/admin/records/<int:record_id>/return', methods=['POST'])
+@token_required
+@admin_only
+def admin_manual_return(current_user_id, record_id):
+    try:
+        record = db.session.get(BorrowRecord, record_id)
+        if not record:
+            return jsonify({"message": "记录不存在"}), 404
+
+        if record.status == 'returned':
+            return jsonify({"message": "该书此前已归还"}), 400
+
+        # 更新状态
+        book = db.session.get(Book, record.book_id)
+        record.status = 'returned'
+        record.return_date = datetime.now().date()
+        book.stock += 1  # 库存回滚
+
+        db.session.commit()
+        return jsonify({"message": "还书手续办理成功"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     # 本地开发监听 5328 端口
     app.run(host='127.0.0.1', port=5328, debug=True)
