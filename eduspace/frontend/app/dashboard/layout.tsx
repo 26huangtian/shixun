@@ -77,12 +77,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       homeItem,
       { name: '在线书库', href: '/dashboard/books', icon: '🏛️' },
       { name: '我的借阅', href: '/dashboard/my-books', icon: '🔖' },
+{ name: '我的收藏', href: '/dashboard/wishlist', icon: '💖' },
+{ name: '今日荐书', href: '/dashboard/recommend', icon: '✨' },
       profileItem,
     ];
 
     // 管理端功能
     const adminItems = [
       homeItem,
+{ name: '我的收藏', href: '/dashboard/wishlist', icon: '💖' },
       { name: '图书入库', href: '/dashboard/admin/inventory', icon: '📦' },
       { name: '借阅审核', href: '/dashboard/admin/records', icon: '⚖️' },
       { name: '读者权限管理', href: '/dashboard/admin/users', icon: '👥' },

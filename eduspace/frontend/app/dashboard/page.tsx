@@ -11,181 +11,163 @@ export default function BookSpaceDashboard() {
 
   useEffect(() => {
     const fetchData = async () => {
-      // 1. 获取当前登录会话
       const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        router.push('/login');
-        return;
-      }
-
+      if (!session) { router.push('/login'); return; }
       setUserEmail(session.user.email || '');
 
-      // 2. 携带令牌请求后端真实统计数据
       try {
         const res = await fetch('/api/dashboard/stats', {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
         });
-        
-        if (!res.ok) {
-           throw new Error('后端响应不成功');
-        }
-
         const data = await res.json();
         setStats(data);
       } catch (err) {
-        console.error("加载 Dashboard 数据失败:", err);
+        console.error("加载数据失败:", err);
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [router]);
 
-  // 退出登录逻辑
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
-  };
-
-  // 加载中状态显示
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
-        <p className="mt-4 text-slate-400 font-bold animate-pulse uppercase tracking-widest text-xs">正在连接图书云端...</p>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="min-h-[80vh] flex items-center justify-center">
+      <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  );
 
   return (
-    // 主容器：使用浅色背景 bg-slate-50，消除黑色压抑感
-    <div className="min-h-screen bg-slate-50 p-4 md:p-10 space-y-10 animate-in fade-in duration-700">
+    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700 pb-20">
       
-      {/* 1. 顶部欢迎横幅：蓝紫渐变色系 */}
-      <section className="relative p-10 rounded-[3rem] overflow-hidden shadow-2xl shadow-indigo-100">
-        {/* 渐变背景 */}
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-600"></div>
-        
+      {/* 1. 顶部欢迎横幅 */}
+      <section className="relative p-10 rounded-[3.5rem] overflow-hidden shadow-2xl shadow-indigo-100">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600"></div>
         <div className="relative z-10 flex justify-between items-start text-white">
           <div>
-            <h2 className="text-4xl font-black tracking-tighter italic">
-              你好, {stats?.real_name || userEmail.split('@')[0]} <span className="not-italic">📖</span>
-            </h2>
-            <p className="mt-2 text-blue-100 font-bold uppercase tracking-[0.2em] text-xs opacity-90">
-                {stats?.role === 'admin' ? '系统管理员权限已激活' : '数字化图书借阅平台'}
+            <h2 className="text-4xl font-black tracking-tighter italic">你好, {stats?.real_name || userEmail.split('@')[0]} 👋</h2>
+            <p className="mt-2 text-indigo-100 font-bold uppercase tracking-widest text-[10px] opacity-80">
+                {stats?.role === 'admin' ? 'Administrator • 系统主控模式' : 'Reader • 个人学业书库'}
             </p>
           </div>
-          
-          {/* 安全退出按钮：半透明磨砂质感 */}
-          <button 
-            onClick={handleLogout}
-            className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all border border-white/20 active:scale-95 shadow-lg"
-          >
-            <span>🚪</span> 安全退出系统
+          <button onClick={async () => { await supabase.auth.signOut(); router.push('/login'); }} 
+            className="bg-white/10 backdrop-blur-md px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-500 transition-all border border-white/10 active:scale-95">
+            🚪 登出
           </button>
         </div>
-
-        {/* 装饰性背景球 */}
-        <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
       </section>
 
-      {/* 2. 读者个人状态区 (所有角色共有) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* 借阅统计卡片 */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 group hover:shadow-xl transition-all">
+      {/* 2. 逾期罚金红色预警 (仅在有逾期时显示) */}
+      {stats?.overdue_info?.has_overdue && (
+        <div className="bg-red-50 border-2 border-red-100 p-6 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-4 animate-bounce">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 bg-red-500 rounded-3xl flex items-center justify-center text-3xl shadow-xl shadow-red-200">⚠️</div>
+            <div>
+              <h4 className="text-red-600 font-black uppercase tracking-tight text-xl italic">检测到借阅逾期</h4>
+              <p className="text-red-400 text-xs font-bold mt-1">
+                共有 {stats.overdue_info.count} 本书超期，累计罚金：
+                <span className="text-red-600 text-lg font-black ml-2 font-mono">¥{stats.overdue_info.total_fine.toFixed(2)}</span>
+              </p>
+            </div>
+          </div>
+          <button onClick={() => router.push('/dashboard/my-books')} className="bg-red-600 text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-red-200 hover:bg-red-700 transition-all active:scale-95">
+            立即去还书
+          </button>
+        </div>
+      )}
+
+      {/* 3. 核心统计卡片 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* 借阅数 */}
+        <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-50 flex flex-col justify-between group hover:shadow-xl transition-all">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">我的借阅概览</h3>
+            <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">当前在读</h3>
             <span className="text-xl">📚</span>
           </div>
           <div className="flex items-baseline gap-3">
-            <span className="text-7xl font-black text-indigo-600">{stats?.my_stats?.borrowing || 0}</span>
-            <span className="text-slate-400 font-bold uppercase text-xs">Books active</span>
+            <span className="text-8xl font-black text-indigo-600 tracking-tighter">{stats?.my_stats?.borrowing || 0}</span>
+            <span className="text-slate-400 font-bold uppercase text-xs italic tracking-widest">Books</span>
           </div>
-          <button 
-            onClick={() => router.push('/dashboard/books')}
-            className="mt-8 w-full py-4 bg-indigo-50 text-indigo-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all"
-          >
-            浏览图书馆藏 →
+          <button onClick={() => router.push('/dashboard/books')} className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-600 transition-all">
+             前往书库浏览
           </button>
         </div>
 
-        {/* 到期提醒卡片 */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 group hover:shadow-xl transition-all">
+        {/* 阅读挑战进度 (环形图) */}
+        <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-50 flex items-center justify-between group hover:shadow-xl transition-all">
+           <div className="space-y-3">
+              <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">本月阅读挑战</h3>
+              <p className="text-2xl font-black text-slate-800 tracking-tighter italic">
+                已读 {stats?.challenge?.current} / {stats?.challenge?.goal} 本
+              </p>
+              <p className="text-[10px] text-indigo-500 font-bold uppercase underline decoration-indigo-100 decoration-2 underline-offset-4">
+                 距离目标还剩 {stats?.challenge?.goal - stats?.challenge?.current} 本
+              </p>
+           </div>
+           <div className="relative w-28 h-28">
+              <svg className="w-full h-full transform -rotate-90">
+                <circle cx="56" cy="56" r="48" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-50" />
+                <circle cx="56" cy="56" r="48" stroke="currentColor" strokeWidth="8" fill="transparent" 
+                  strokeDasharray={301}
+                  strokeDashoffset={301 - (301 * (stats?.challenge?.percent || 0)) / 100}
+                  className="text-indigo-600 transition-all duration-1000 ease-out"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-lg font-black text-slate-800">{stats?.challenge?.percent}%</span>
+              </div>
+           </div>
+        </div>
+
+        {/* 临期提醒 */}
+        <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-50 flex flex-col justify-between group hover:shadow-xl transition-all">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">待还提醒</h3>
+            <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">最近待还</h3>
             <span className="text-xl">⏰</span>
           </div>
           {stats?.my_stats?.due_soon_book ? (
             <div className="space-y-3">
-              <p className="text-2xl font-black text-slate-800 tracking-tight leading-tight">《{stats.my_stats.due_soon_book}》</p>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 bg-orange-500 rounded-full animate-pulse"></span>
-                <p className="text-orange-500 font-black text-xs italic">
-                  将在 {stats.my_stats.due_date} 到期，请按时归还
-                </p>
-              </div>
+              <p className="text-2xl font-black text-slate-800 tracking-tight leading-tight line-clamp-2 uppercase">《{stats.my_stats.due_soon_book}》</p>
+              <p className="text-orange-500 font-black text-xs italic tracking-widest">将在 {stats.my_stats.due_date} 到期</p>
             </div>
           ) : (
-            <div className="py-8 flex flex-col items-center justify-center opacity-30">
+            <div className="py-8 flex flex-col items-center justify-center opacity-20">
                <span className="text-4xl">🍃</span>
-               <p className="text-[10px] font-black uppercase tracking-widest mt-3">暂无即期还书任务</p>
+               <p className="text-[10px] font-black uppercase tracking-widest mt-4">暂无超期风险</p>
             </div>
           )}
+          <button onClick={() => router.push('/dashboard/my-books')} className="mt-8 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-600 transition-colors">查看详细档案 →</button>
         </div>
       </div>
 
-      {/* 3. 管理员管理视窗 (仅当角色为 admin 时显示) */}
+      {/* 4. 管理员全馆监控 (Conditional) */}
       {stats?.role === 'admin' && (
-        <section className="pt-6 space-y-8 animate-in slide-in-from-bottom-10 duration-1000">
-          <div className="flex items-center gap-4 px-6">
-            <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] whitespace-nowrap">全馆实时监控系统</h3>
-            <div className="h-[1px] w-full bg-slate-200/50"></div>
+        <section className="pt-10 space-y-8 animate-in slide-in-from-bottom-10 duration-1000">
+          <div className="flex items-center gap-6 px-4 text-slate-300 font-black text-[11px] uppercase tracking-[0.5em]">
+             <span>全馆实时监控</span>
+             <div className="h-[1px] flex-1 bg-slate-100"></div>
           </div>
-
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <AdminStatCard title="图书总量" value={stats.admin_stats?.total_books} color="text-blue-600" icon="📦" />
-            <AdminStatCard title="活跃读者" value={stats.admin_stats?.total_readers} color="text-indigo-600" icon="👥" />
-            <AdminStatCard title="当前借出" value={stats.admin_stats?.active_borrows} color="text-purple-600" icon="♻️" />
-            <AdminStatCard title="库存预警" value={stats.admin_stats?.low_stock_count} color="text-orange-500" icon="⚠️" />
-          </div>
-
-          {/* 底部快捷入口：深蓝黑色风格，体现后台的稳重感 */}
-          <div className="bg-slate-900 p-12 rounded-[3.5rem] text-white flex flex-col md:flex-row justify-between items-center relative overflow-hidden shadow-2xl">
-             <div className="relative z-10 space-y-4">
-                <h4 className="text-3xl font-black italic tracking-tighter">后台智慧管理枢纽</h4>
-                <p className="text-slate-400 text-sm font-medium max-w-lg leading-relaxed">
-                    管理员专区已开放：支持图书批量入库、借阅历史追溯及逾期罚金处理等核心管控功能。
-                </p>
+             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
+                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">总图书种类</span>
+                <p className="text-5xl font-black text-blue-600 mt-2 tracking-tighter">{stats.admin_stats?.total_books}</p>
              </div>
-             <button 
-                onClick={() => router.push('/dashboard/admin/inventory')}
-                className="relative z-10 mt-10 md:mt-0 bg-gradient-to-r from-blue-600 to-indigo-600 px-12 py-5 rounded-[1.8rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all"
-             >
-                进入管理控制台
-             </button>
-             {/* 极淡的紫色背景装饰 */}
-             <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
+                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">活跃读者数</span>
+                <p className="text-5xl font-black text-indigo-600 mt-2 tracking-tighter">{stats.admin_stats?.total_readers}</p>
+             </div>
+             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
+                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">全馆借出中</span>
+                <p className="text-5xl font-black text-purple-600 mt-2 tracking-tighter">{stats.admin_stats?.active_borrows}</p>
+             </div>
+             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
+                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">库存预警</span>
+                <p className="text-5xl font-black text-red-500 mt-2 tracking-tighter">{stats.admin_stats?.low_stock_count}</p>
+             </div>
           </div>
         </section>
       )}
-    </div>
-  );
-}
-
-// 内部组件：管理员统计小卡片
-function AdminStatCard({ title, value, color, icon }: any) {
-  return (
-    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-50 shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-xl transition-all duration-500">
-      <div className="flex justify-between items-start mb-6">
-        <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{title}</span>
-        <span className="text-lg grayscale opacity-40">{icon}</span>
-      </div>
-      <p className={`text-5xl font-black tracking-tighter ${color} mb-2`}>{value || 0}</p>
-      <div className="w-8 h-1.5 bg-slate-100 rounded-full"></div>
     </div>
   );
 }
