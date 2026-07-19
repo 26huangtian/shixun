@@ -84,7 +84,7 @@ eduspace
 
 ```powershell
 
-git clone https://github.com/你的github用户名/eduspace.git
+git clone https://github.com/26huangtian/.git
 
 cd eduspace
 
@@ -152,7 +152,7 @@ API 文档说明
 
 前端 Demo 访问链接（Vercel 部署）：https://shixun-tau.vercel.app/login
 
-后端线上接口地址（Render 部署）：https://xxx.onrender.com
+后端线上接口地址：(https://sdassdgsgfs.pythonanywhere.com/)
 
 数据库说明
 
