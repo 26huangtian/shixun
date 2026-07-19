@@ -477,3 +477,8 @@ def admin_manage_books(current_user_id, book_id=None):
 if __name__ == '__main__':
     # 本地开发监听 5328 端口
     app.run(host='127.0.0.1', port=5328, debug=True)
+
+
+    @app.route('/')
+    def hello():
+        return '后端服务运行正常'
