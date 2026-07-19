@@ -150,7 +150,7 @@ API 文档说明
 
 线上部署演示地址
 
-前端 Demo 访问链接（Vercel 部署）：https://xxx.vercel.app
+前端 Demo 访问链接（Vercel 部署）：https://shixun-tau.vercel.app/login
 
 后端线上接口地址（Render 部署）：https://xxx.onrender.com
 

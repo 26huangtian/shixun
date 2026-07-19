@@ -19,6 +19,11 @@ app = Flask(__name__)
 # 允许所有来源跨域，解决线上线下通信问题
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
+
+@app.route('/')
+def index():
+    return "后端部署成功，服务正常运行"
+
 # --- 2. 数据库配置 ---
 app.config[
     'SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres.rrwkycogajqdqawbyxos:Huangtianxiang@aws-1-us-east-2.pooler.supabase.com:5432/postgres'
@@ -479,6 +484,3 @@ if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5328, debug=True)
 
 
-    @app.route('/')
-    def hello():
-        return '后端服务运行正常'
