@@ -1,22 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 跳过TS类型构建报错
   typescript: {
     ignoreBuildErrors: true
-  }
-}
-module.exports = nextConfig
-
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+  },
+  // 本地接口代理转发
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://127.0.0.1:5328/api/:path*', // 确保端口和 Flask 一致
-      },
+        destination: 'http://127.0.0.1:5328/api/:path*'
+      }
     ];
-  },
-};
+  }
+}
 
-export default nextConfig;
+module.exports = nextConfig
