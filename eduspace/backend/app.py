@@ -24,6 +24,13 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 def index():
     return "后端部署成功，服务正常运行"
 
+
+
+from flask_cors import CORS
+
+# 允许所有域名跨域，开发阶段直接用这个配置
+CORS(app, supports_credentials=True)
+
 # --- 2. 数据库配置 ---
 app.config[
     'SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres.rrwkycogajqdqawbyxos:Huangtianxiang@aws-1-us-east-2.pooler.supabase.com:5432/postgres'
