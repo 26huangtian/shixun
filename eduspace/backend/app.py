@@ -392,120 +392,87 @@ def admin_only(f):
 
 
 # 1. 管理端：图书全量管理 (新增/修改)
-@app.route('/api/admin/books', methods=['POST', 'PUT'])
+@app.route('/api/admin/users', methods=['GET'])
+@app.route('/admin/users', methods=['GET'])
 @token_required
 @admin_only
-def admin_manage_books(current_user_id):
-    data = request.json
-    if request.method == 'POST':  # 新增入库
-        new_book = Book(
-            title=data['title'],
-            author=data['author'],
-            category=data['category'],
-            stock=data['stock'],
-            description=data.get('description', ''),
-            location=data.get('location', '未分类')
-        )
-        db.session.add(new_book)
-        db.session.commit()
-        return jsonify({"message": "图书入库成功"})
-
-    if request.method == 'PUT':  # 修改信息
-        book = db.session.get(Book, data['id'])
-        if book:
-            book.title = data.get('title', book.title)
-            book.stock = data.get('stock', book.stock)
-            book.location = data.get('location', book.location)
-            db.session.commit()
-            return jsonify({"message": "信息已同步"})
-        return jsonify({"message": "图书不存在"}), 404
+def admin_get_users(current_user_id):
+    # 只查询非管理员账号
+    users = Profile.query.filter(Profile.role != 'admin').all()
+    return jsonify([{"id": str(u.id), "name": u.name, "role": u.role} for u in users])
 
 
-# 2. 管理端：删除图书
-@app.route('/api/admin/books/<int:id>', methods=['DELETE'])
+@app.route('/api/admin/user-detail/<target_user_id>', methods=['GET'])
+@app.route('/admin/user-detail/<target_user_id>', methods=['GET'])
 @token_required
 @admin_only
-def admin_delete_book(current_user_id, id):
-    book = db.session.get(Book, id)
-    if book:
-        db.session.delete(book)
-        db.session.commit()
-        return jsonify({"message": "图书已永久移除"})
-    return jsonify({"message": "未找到图书"}), 404
-
-
-# 3. 管理端：全馆借阅流水审计
-@app.route('/api/admin/records', methods=['GET'])
-@token_required
-@admin_only
-def admin_get_all_records(current_user_id):
-    # 联查：借阅记录 + 书名 + 借阅人姓名
-    records = db.session.query(BorrowRecord, Book.title, Profile.name) \
-        .join(Book, BorrowRecord.book_id == Book.id) \
-        .join(Profile, BorrowRecord.user_id == Profile.id) \
-        .order_by(BorrowRecord.created_at.desc()).all()
-
-    return jsonify([{
-        "id": r[0].id,
-        "title": r[1],
-        "user_name": r[2],
-        "borrow_date": r[0].borrow_date.strftime('%Y-%m-%d'),
-        "due_date": r[0].due_date.strftime('%Y-%m-%d'),
-        "status": r[0].status
-    } for r in records])
-
-
-# 1. 管理端：修改图书详情 (支持全字段更新)
-@app.route('/api/admin/books/<int:book_id>', methods=['PUT'])
-@token_required
-@admin_only
-def admin_update_book(current_user_id, book_id):
+def admin_get_user_detail(current_user_id, target_user_id):
     try:
-        data = request.json
-        book = db.session.get(Book, book_id)
-        if not book:
-            return jsonify({"message": "图书不存在"}), 404
+        reader = db.session.get(Profile, target_user_id)
+        if not reader: return jsonify({"error": "档案不存在"}), 404
 
-        # 更新字段
-        book.title = data.get('title', book.title)
-        book.author = data.get('author', book.author)
-        book.category = data.get('category', book.category)
-        book.stock = data.get('stock', book.stock)
-        book.location = data.get('location', book.location)
-        book.description = data.get('description', book.description)
-        book.isbn = data.get('isbn', book.isbn)
+        # 借阅流水
+        history = db.session.query(BorrowRecord, Book.title).join(Book).filter(
+            BorrowRecord.user_id == target_user_id).all()
+        # 心愿单
+        wishlist = db.session.query(Book.title, Book.category).join(Wishlist).filter(
+            Wishlist.user_id == target_user_id).all()
 
-        db.session.commit()
-        return jsonify({"message": "图书资产信息已同步更新"})
+        return jsonify({
+            "name": reader.name, "role": reader.role,
+            "borrow_history": [{"title": h[1], "status": h[0].status, "due_date": str(h[0].due_date)} for h in history],
+            "wishlist": [{"title": w[0], "category": w[1]} for w in wishlist]
+        })
     except Exception as e:
-        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 
-# 2. 管理端：手动办理还书手续
+@app.route('/api/admin/records', methods=['GET'])
+@app.route('/admin/records', methods=['GET'])
+@token_required
+@admin_only
+def admin_get_records(current_user_id):
+    records = db.session.query(BorrowRecord, Book.title, Profile.name).join(Book).join(Profile).all()
+    return jsonify(
+        [{"id": r[0].id, "title": r[1], "user_name": r[2], "status": r[0].status, "due_date": str(r[0].due_date)} for r
+         in records])
+
+
 @app.route('/api/admin/records/<int:record_id>/return', methods=['POST'])
 @token_required
 @admin_only
 def admin_manual_return(current_user_id, record_id):
-    try:
-        record = db.session.get(BorrowRecord, record_id)
-        if not record:
-            return jsonify({"message": "记录不存在"}), 404
-
-        if record.status == 'returned':
-            return jsonify({"message": "该书此前已归还"}), 400
-
-        # 更新状态
+    record = db.session.get(BorrowRecord, record_id)
+    if record and record.status == 'borrowing':
         book = db.session.get(Book, record.book_id)
         record.status = 'returned'
         record.return_date = datetime.now().date()
-        book.stock += 1  # 库存回滚
-
+        book.stock += 1
         db.session.commit()
-        return jsonify({"message": "还书手续办理成功"})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"message": "还书办结"})
+    return jsonify({"error": "记录异常"}), 400
+
+
+@app.route('/api/admin/books', methods=['POST'])
+@app.route('/api/admin/books/<int:book_id>', methods=['PUT', 'DELETE'])
+@token_required
+@admin_only
+def admin_manage_books(current_user_id, book_id=None):
+    if request.method == 'POST':
+        data = request.json
+        db.session.add(Book(title=data['title'], author=data['author'], category=data['category'], stock=data['stock'],
+                            location=data.get('location'), description=data.get('description'), isbn=data.get('isbn')))
+    elif request.method == 'PUT':
+        data = request.json
+        book = db.session.get(Book, book_id)
+        if book:
+            book.title, book.stock = data['title'], data['stock']
+            book.location, book.description = data.get('location'), data.get('description')
+    elif request.method == 'DELETE':
+        book = db.session.get(Book, book_id)
+        if book: db.session.delete(book)
+    db.session.commit()
+    return jsonify({"message": "操作成功"})
 
 if __name__ == '__main__':
     # 本地开发监听 5328 端口
