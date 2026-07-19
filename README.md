@@ -1,3 +1,9 @@
+线上部署演示地址
+
+前端 Demo 访问链接（Vercel 部署）：https://shixun-tau.vercel.app/login
+
+后端线上接口地址：(https://sdassdgsgfs.pythonanywhere.com/)
+
 http://localhost:3000
 
 2539424016@qq.com
@@ -147,12 +153,6 @@ python app.py
 API 文档说明
 
 后端所有接口详细规范、请求参数、返回 JSON 示例单独存放于 api.md 文件，包含课程查询、新增课程两大核心接口，附带接口调用截图。
-
-线上部署演示地址
-
-前端 Demo 访问链接（Vercel 部署）：https://shixun-tau.vercel.app/login
-
-后端线上接口地址：(https://sdassdgsgfs.pythonanywhere.com/)
 
 数据库说明
 
